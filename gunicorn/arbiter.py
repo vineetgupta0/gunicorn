@@ -10,6 +10,8 @@ import signal
 import sys
 import time
 import traceback
+import subprocess
+
 
 from gunicorn.errors import HaltServer, AppImportError
 from gunicorn.pidfile import Pidfile
@@ -562,27 +564,29 @@ class Arbiter(object):
             if e.errno != errno.ECHILD:
                 raise
 
-    def manage_workers(self):
-        """\
-        Maintain the number of workers by spawning or killing
-        as required.
-        """
-        if len(self.WORKERS) < self.num_workers:
-            self.spawn_workers()
-
-        workers = self.WORKERS.items()
-        workers = sorted(workers, key=lambda w: w[1].age)
-        while len(workers) > self.num_workers:
-            (pid, _) = workers.pop(0)
-            self.kill_worker(pid, signal.SIGTERM)
-
-        active_worker_count = len(workers)
-        if self._last_logged_active_worker_count != active_worker_count:
-            self._last_logged_active_worker_count = active_worker_count
-            self.log.debug("{0} workers".format(active_worker_count),
-                           extra={"metric": "gunicorn.workers",
-                                  "value": active_worker_count,
-                                  "mtype": "gauge"})
+def manage_workers(self):
+    if len(self.WORKERS) < self.num_workers:
+        self.spawn_workers()
+    workers = self.WORKERS.items()
+    workers = sorted(workers, key=lambda w: w[1].age)
+    while len(workers) > self.num_workers:
+        (pid, _) = workers.pop(0)
+        self.kill_worker(pid, signal.SIGTERM)
+    active_worker_count = len(workers)
+    if self._last_logged_active_worker_count != active_worker_count:
+        self._last_logged_active_worker_count = active_worker_count
+        worker_info = []
+        for (pid, worker) in workers:
+            # Execute `ps` command to obtain worker state, RSS, and VSZ
+            cmd = ["ps", "-p", str(pid), "-o", "state,rss,vsz", "--no-headers"]
+            output = subprocess.check_output(cmd).decode().strip()
+            worker_state, rss, vsz = output.split()
+            worker_info.append(f"Worker {pid}: State={worker_state}, RSS={rss}, VSZ={vsz}")
+        worker_info_str = ", ".join(worker_info)
+        self.log.debug(f"{active_worker_count} workers: {worker_info_str}",
+                       extra={"metric": "gunicorn.workers",
+                              "value": active_worker_count,
+                              "mtype": "gauge"})
 
     def spawn_worker(self):
         self.worker_age += 1
