@@ -48,7 +48,7 @@ Why is there no HTTP Keep-Alive?
 
 The default Sync workers are designed to run behind Nginx which only uses
 HTTP/1.0 with its upstream servers. If you want to deploy Gunicorn to
-handle unbuffered requests (ie, serving requests directly from the internet)
+handle unbuffered requests (ie, serving  directly from the internet)
 you should use one of the async workers.
 
 .. _Hey: https://github.com/rakyll/hey
